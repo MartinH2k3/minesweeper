@@ -50,6 +50,9 @@ class Point:
             return NotImplemented
         return self.x == other.x and self.y == other.y
 
+    def __hash__(self):
+        return hash((self.x, self.y))
+
     def within(self, other: list[list]):
         if not isinstance(other, list):
             return NotImplemented

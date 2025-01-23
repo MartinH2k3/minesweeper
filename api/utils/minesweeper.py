@@ -1,4 +1,4 @@
-from point import Point
+from api.utils.point import Point
 import random
 
 class Board:
@@ -32,11 +32,13 @@ class Board:
 
     def reveal(self, point: Point):
         if not point.within(self.board) or self.revealed[point.x][point.y]:
-            return
+            return False
         self.revealed[point.x][point.y] = True
         if self.board[point.x][point.y] == 0:
             for p in point.neighbors(True):
                 self.reveal(p)
+
+        return self.board[point.x][point.y] == -1
 
     def flag(self, point: Point):
         if not point.within(self.board) or self.revealed[point.x][point.y]:
@@ -50,3 +52,17 @@ class Board:
             self.flags.remove(point)
             self.revealed[point.x][point.y] = False
             self.remaining_mines += 1
+
+    def __str__(self):
+        output = ""
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.revealed[i][j]:
+                    if Point(i, j) in self.flags:
+                        output += "F"
+                    else:
+                        output += str(self.board[i][j])
+                else:
+                    output += "_"
+            output += "\n"
+        return output
