@@ -5,8 +5,10 @@ class Board:
     def __init__(self, size: int, mine_count: int):
         self.size = size
         self.mine_count = mine_count
+        self.remaining_mines = mine_count
         self.board: list[list[int]] = [[0] * size for _ in range(size)]
         self.revealed: list[list[bool]] = [[False] * size for _ in range(size)]
+        self.flags: set[Point] = set()
         self._generate_mines()
 
     def _generate_mines(self):
@@ -28,10 +30,23 @@ class Board:
                 count += 1
         return count
 
-    def _reveal(self, point: Point):
+    def reveal(self, point: Point):
         if not point.within(self.board) or self.revealed[point.x][point.y]:
             return
         self.revealed[point.x][point.y] = True
         if self.board[point.x][point.y] == 0:
             for p in point.neighbors(True):
-                self._reveal(p)
+                self.reveal(p)
+
+    def flag(self, point: Point):
+        if not point.within(self.board) or self.revealed[point.x][point.y]:
+            return
+        self.revealed[point.x][point.y] = True
+        self.flags.add(point)
+        self.remaining_mines -= 1
+
+    def unflag(self, point: Point):
+        if point in self.flags:
+            self.flags.remove(point)
+            self.revealed[point.x][point.y] = False
+            self.remaining_mines += 1
