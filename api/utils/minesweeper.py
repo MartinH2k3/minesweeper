@@ -70,7 +70,7 @@ class Board:
 
 
 class MinesweeperGUI:
-    def __init__(self, root: tk.Tk, size: int = 10, mine_count: int = 10):
+    def __init__(self, root: tk.Tk, size: int = 25, mine_count: int = 80):
         self.root = root
         self.root.title("Minesweeper")
 
