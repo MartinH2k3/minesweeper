@@ -1,17 +1,8 @@
 import utils
+import tkinter as tk
 
-board = utils.Board(10, 10)
+if __name__ == "__main__":
+    root = tk.Tk()
+    gui = utils.minesweeper.MinesweeperGUI(root)
 
-while True:
-    print(board)
-    x, y = map(int, input("Enter x, y: ").split())
-    point = utils.Point(x, y)
-    action = input("Enter action: ")
-    if action == "r":
-        board.reveal(point)
-    elif action == "f":
-        board.flag(point)
-    elif action == "u":
-        board.unflag(point)
-    else:
-        break
+    root.mainloop()
