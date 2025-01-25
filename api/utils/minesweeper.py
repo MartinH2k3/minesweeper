@@ -97,180 +97,84 @@ class Board:
         return flagged + revealed
 
     def auto_solve_advanced(self):
-        """
-            Identify islands bordering unrevealed fields and do partial backtracking
-            to find forced flags or reveals.
-            Returns number of cells changed (flagged or revealed).
-        """
-        frontier = self._get_frontier()
-        islands = self._get_islands(frontier)
-        total_changed = 0
-        for island in islands:
-            constraints = self._get_constraints_for_island(island)
-            changed = self._process_island_with_backtracking(island, constraints)
-            total_changed += changed
+        hidden_cells = []
+        assignment = {}
 
-        return total_changed
+        # Mark flagged cells as known mines in assignment
+        for f in self.flags:
+            assignment[f] = 1
 
-    def _get_frontier(self):
-        frontier = []
-        for i in range(self.size):
-            for j in range(self.size):
-                if not self.revealed[i][j] and Point(i, j) not in self.flags:
-                    # Check if it's adjacent to any revealed cell
-                    for p in Point(i, j).neighbors(True):
-                        if p.within(self.board) and self.revealed[p.x][p.y]:
-                            frontier.append(Point(i, j))
-                            break
-        return frontier
+        # Gather hidden (unrevealed) cells that are NOT flagged
+        for x in range(self.size):
+            for y in range(self.size):
+                if not self.revealed[x][y] and Point(x, y) not in self.flags:
+                    hidden_cells.append(Point(x, y))
 
-    def _get_islands(self, frontier):
-        frontier_set = set(frontier)  # for quick 'in' checks
-        visited = set()
-        islands = []
-
-        def dfs(start):
-            stack = [start]
-            island = set()
-            while stack:
-                cell = stack.pop()
-                if cell in visited:
-                    continue
-                visited.add(cell)
-                island.add(cell)
-                # check neighbors that are in frontier
-                for nb in cell.neighbors(True):
-                    if nb in frontier_set and nb not in visited:
-                        stack.append(nb)
-            return island
-
-        for cell in frontier:
-            if cell not in visited:
-                island = dfs(cell)
-                islands.append(island)
-
-        return islands
-
-    def _get_constraints_for_island(self, island):
-        """
-        Return a list of constraints.
-        Each constraint is (hidden_cells_list, required_mines).
-        """
-        island_constraints = []
-        used_constraints = set()
-
-        for cell in island:
-            for nb in cell.neighbors(True):
-                if nb.within(self.board) and self.revealed[nb.x][nb.y]:
-                    if nb not in used_constraints:
-                        used_constraints.add(nb)
-                        # Now build the constraint
-                        hidden_list = []
-                        flagged_count = 0
-                        required_mines = self.board[nb.x][nb.y]  # the number on that revealed cell
-                        for n2 in nb.neighbors(True):
-                            if n2.within(self.board):
-                                if n2 in self.flags:
-                                    flagged_count += 1
-                                elif not self.revealed[n2.x][n2.y]:
-                                    hidden_list.append(n2)
-                        required_mines -= flagged_count
-                        island_constraints.append((hidden_list, required_mines))
-
-        return island_constraints
-
-    def _process_island_with_backtracking(self, island, constraints):
-        """
-        1) Build a list of island cells (variables).
-        2) Enumerate all solutions that satisfy 'constraints'.
-        3) For each cell, check if it's always a mine or always safe.
-        4) Flag or reveal accordingly.
-        Return how many cells changed.
-        """
-        island_cells = list(island)
-        n = len(island_cells)
-        valid_solutions = []
-
-        # We'll store partial assignments in a list of 0/1, same order as island_cells
-        assignment = [0] * n
-
-        def backtrack(index):
-            if index == n:
-                # Check constraints
-                if self._check_constraints(assignment, island_cells, constraints):
-                    valid_solutions.append(assignment[:])  # copy
-                return
-
-            # Option 1: cell is not a mine
-            assignment[index] = 0
-            # quick prune check - optional advanced logic
-            if self._partial_ok(assignment, index, island_cells, constraints):
-                backtrack(index + 1)
-
-            # Option 2: cell is a mine
-            assignment[index] = 1
-            # prune check again
-            if self._partial_ok(assignment, index, island_cells, constraints):
-                backtrack(index + 1)
-
-        backtrack(0)
-
-        if not valid_solutions:
-            # No valid solutions found => no forced moves
+        # If no hidden cells, nothing to do
+        if not hidden_cells:
             return 0
 
-        # For each cell, check if it's always 1 or always 0
+        valid_solutions = []
+        current_assignment = {}
+
+        # We'll keep track of how many mines we've assigned so far
+        mines_used = len(self.flags)  # flagged cells are already mines
+
+        def backtrack(index, mines_assigned):
+            """Recursive backtracking over hidden_cells[index:]."""
+            # If we've already assigned more mines than we have left, prune
+            if mines_assigned > self.remaining_mines:
+                return
+
+            # If we assigned a value for all hidden cells, check constraints
+            if index == len(hidden_cells):
+                if self._check_full_constraints(current_assignment):
+                    # Make a copy of the assignment (both flagged + new 0/1) for later
+                    full_map = {**assignment, **current_assignment}
+                    valid_solutions.append(full_map)
+                return
+
+            cell = hidden_cells[index]
+
+            # Option 1: assign as safe (0)
+            current_assignment[cell] = 0
+            if self._partial_ok(current_assignment, index, mines_assigned):
+                backtrack(index + 1, mines_assigned)
+
+            # Option 2: assign as mine (1), if we still have capacity
+            current_assignment[cell] = 1
+            if mines_assigned < self.remaining_mines and self._partial_ok(current_assignment, index,
+                                                                          mines_assigned + 1):
+                backtrack(index + 1, mines_assigned + 1)
+
+            # Cleanup
+            del current_assignment[cell]
+
+        # Launch backtracking
+        backtrack(0, mines_used)
+
+        if not valid_solutions:
+            # No valid solutions => no forced moves
+            return 0
+
+        # Among all valid solutions, see if each cell is always 0 or always 1
         changed = 0
-        for i, cell in enumerate(island_cells):
-            all_1 = all(sol[i] == 1 for sol in valid_solutions)
-            all_0 = all(sol[i] == 0 for sol in valid_solutions)
-            if all_1 and cell not in self.flags:
+        for cell in hidden_cells:
+            # skip if it somehow got flagged during solve
+            if cell in self.flags or self.revealed[cell.x][cell.y]:
+                continue
+
+            all_mine = all(sol.get(cell, 0) == 1 for sol in valid_solutions)
+            all_safe = all(sol.get(cell, 0) == 0 for sol in valid_solutions)
+
+            if all_mine:
                 self.flag(cell)
                 changed += 1
-            elif all_0 and not self.revealed[cell.x][cell.y] and cell not in self.flags:
+            elif all_safe:
                 self.reveal(cell)
                 changed += 1
+
         return changed
-
-    def _check_constraints(self, assignment, island_cells, constraints):
-        assign_map = {}
-        for i, c in enumerate(island_cells):
-            assign_map[c] = assignment[i]
-        for f in self.flags:
-            assign_map[f] = 1
-
-        for (hidden_list, needed) in constraints:
-            count = 0
-            for h in hidden_list:
-                if h in assign_map:
-                    count += assign_map[h]  # either 0 or 1
-                # if h not in assign_map => assume 0 or interpret differently
-            if count != needed:
-                return False
-        return True
-
-    def _partial_ok(self, assignment, index, island_cells, constraints):
-        # For a quick check, see if any constraint is exceeded so far
-        assign_map = {}
-        for i, c in enumerate(island_cells):
-            if i <= index:
-                assign_map[c] = assignment[i]
-        for f in self.flags:
-            assign_map[f] = 1
-
-        for (hidden_list, needed) in constraints:
-            assigned_sum = 0
-            unknown = 0
-            for h in hidden_list:
-                if h in assign_map:
-                    assigned_sum += assign_map[h]
-                else:
-                    unknown += 1
-            if assigned_sum > needed:
-                return False
-            if assigned_sum + unknown < needed:
-                return False
-        return True
 
     def auto_solve(self):
         while sum(sum(i) for i in self.revealed) + self.mine_count < self.size**2:
@@ -280,6 +184,49 @@ class Board:
                 # No more progress
                 break
 
+    def _check_full_constraints(self, assignment_map):
+        for x in range(self.size):
+            for y in range(self.size):
+                if self.revealed[x][y]:
+                    required = self.board[x][y]
+                    # Count flagged or assigned-as-mine neighbors
+                    count_mines = 0
+                    for nb in Point(x, y).neighbors(True):
+                        if nb.x < 0 or nb.x >= self.size or nb.y < 0 or nb.y >= self.size:
+                            continue
+                        # If neighbor is flagged or assigned=1 => mine
+                        if nb in self.flags:
+                            count_mines += 1
+                        elif nb in assignment_map and assignment_map[nb] == 1:
+                            count_mines += 1
+                    if count_mines != required:
+                        return False
+        return True
+
+    def _partial_ok(self, current_assignment, index, mines_used):
+        for x in range(self.size):
+            for y in range(self.size):
+                if self.revealed[x][y]:
+                    required = self.board[x][y]
+                    assigned_mines = 0
+                    unknown = 0
+                    for nb in Point(x, y).neighbors(True):
+                        if not (0 <= nb.x < self.size and 0 <= nb.y < self.size):
+                            continue
+                        if nb in self.flags:
+                            assigned_mines += 1
+                        elif nb in current_assignment:
+                            assigned_mines += current_assignment[nb]
+                        else:
+                            # Not assigned yet => could be 0 or 1
+                            unknown += 1
+                    # if we've already exceeded required => prune
+                    if assigned_mines > required:
+                        return False
+                    # if we assign all unknown as mines we can't reach required => prune
+                    if assigned_mines + unknown < required:
+                        return False
+        return True
 
     def __str__(self):
         output = ""
