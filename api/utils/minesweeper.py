@@ -54,6 +54,53 @@ class Board:
     def won(self) -> bool:
         return sum(sum(i) for i in self.revealed) + self.mine_count == self.size**2
 
+    def auto_flag_simple(self):
+        flagged: int = 0
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.revealed[i][j]:
+                    flagged_count = 0
+                    hidden_neighbors = []
+                    for p in Point(i, j).neighbors(True):
+                        if p.within(self.board):
+                            if p in self.flags: flagged_count += 1
+                            elif not self.revealed[p.x][p.y]: hidden_neighbors.append(p)
+                    if len(hidden_neighbors) == self.board[i][j] - flagged_count:
+                        for p in hidden_neighbors:
+                            self.flag(p)
+                            flagged += 1
+        return flagged
+
+    def auto_reveal_simple(self):
+        revealed = 0
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.revealed[i][j]:
+                    flagged_count = 0
+                    hidden_neighbors = []
+                    for p in Point(i, j).neighbors(True):
+                        if p.within(self.board):
+                            if p in self.flags: flagged_count += 1
+                            elif not self.revealed[p.x][p.y]: hidden_neighbors.append(p)
+                    if self.board[i][j] == flagged_count:
+                        for p in hidden_neighbors:
+                            self.reveal(p)
+                            revealed += 1
+        return revealed
+
+    def auto_solve_simple(self):
+        while self.auto_flag_simple() + self.auto_reveal_simple():
+            pass
+
+    def auto_solve_advanced(self):
+        pass
+
+    def auto_solve(self):
+        while sum(sum(i) for i in self.revealed) + self.mine_count < self.size**2:
+            self.auto_solve_simple()
+            self.auto_solve_advanced()
+
+
     def __str__(self):
         output = ""
         for i in range(self.size):
@@ -103,6 +150,12 @@ class MinesweeperGUI:
         self.base_status_label_config = {"font": ("Helvetica", 14, "normal"), "fg": "black"}
         self.status_label = tk.Label(self.root, text=f"Mines left: {self.board.remaining_mines}", **self.base_status_label_config)
         self.status_label.grid(row=size, column=0, columnspan=size)
+        self.hint_button = tk.Button(
+            self.root, text="Hint",
+            font=("Helvetica", 12),
+            command=lambda: (self.board.auto_solve_simple(), self.update_ui())
+        )
+        self.hint_button.grid(row=self.size + 1, column=1, columnspan=self.size)
         self.play_again_button = None
 
     def on_left_click(self, row: int, col: int):
@@ -163,6 +216,7 @@ class MinesweeperGUI:
         for x in range(self.board.size):
             for y in range(self.board.size):
                 self.board.revealed[x][y] = True
+        self.board.flags.clear()
         self.update_ui()
         self.status_label.config(
             text="You win!" if won else "Boom! You hit a mine.",
