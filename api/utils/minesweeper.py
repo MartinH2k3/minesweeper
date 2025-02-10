@@ -330,12 +330,12 @@ class MinesweeperGUI:
         self.base_status_label_config = {"font": ("Helvetica", 14, "normal"), "fg": "black"}
         self.status_label = tk.Label(self.root, text=f"Mines left: {self.board.remaining_mines}", **self.base_status_label_config)
         self.status_label.grid(row=size, column=0, columnspan=size)
-        self.hint_button = tk.Button(
-            self.root, text="Hint",
+        self.solve_button = tk.Button(
+            self.root, text="Solve",
             font=("Helvetica", 12),
             command=lambda: (self.board.auto_solve(), self.update_ui())
         )
-        self.hint_button.grid(row=self.size + 1, column=1, columnspan=self.size)
+        self.solve_button.grid(row=self.size + 1, column=1, columnspan=self.size)
         self.play_again_button = None
 
     def on_left_click(self, row: int, col: int):
